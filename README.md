@@ -300,7 +300,7 @@ CivicTrail is an **MVP / prototype** built for evaluation and demonstration. It 
 
 ## Demo
 
-- [Live Demo](INSERT_LIVE_DEMO_URL)
+- [Live Demo](https://civictrail.vercel.app)
 - [Demo Video](INSERT_DEMO_VIDEO_URL)
 
 ## Disclaimer
