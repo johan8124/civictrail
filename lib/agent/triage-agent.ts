@@ -15,6 +15,11 @@
  * wall-clock deadline on the whole agent run — after which the orchestrator
  * falls back to the deterministic pipeline.
  *
+ * MODEL ISOLATION: GROQ_MODEL is optional — when unset or blank the runner
+ * uses DEFAULT_MODEL_ID (openai/gpt-oss-20b), the production-safe Groq model
+ * that supports tool use / function calling while staying inside free-tier
+ * token budgets. GROQ_API_KEY remains required server-side.
+ *
  * SECRET SAFETY: GROQ_API_KEY is read server-side and passed only to the
  * model client. It is never logged, never returned, never sent to the client.
  */
@@ -24,6 +29,13 @@ import { createCivicTrailTools, createCollector, type AgentRunCollector } from "
 import type { EvidenceRecord, ImplementedWorkflowId } from "../types/civictrail";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+
+/**
+ * Production-default Groq model. openai/gpt-oss-20b supports tool use /
+ * function calling, so the Strands agent keeps calling its real tools, and it
+ * stays well inside free-tier token budgets. GROQ_MODEL may override it.
+ */
+const DEFAULT_MODEL_ID = "openai/gpt-oss-20b";
 
 /** Bounded retry budget: one short retry for transient throttling, not batch-style waits. */
 const DEFAULT_MAX_RETRIES = 1;
@@ -112,13 +124,12 @@ export class MissingGroqConfigError extends Error {
 
 function createTriageModel(): OpenAIModel {
   const apiKey = process.env.GROQ_API_KEY;
-  const modelId = process.env.GROQ_MODEL;
+  // GROQ_MODEL is an optional explicit override (e.g. openai/gpt-oss-120b when
+  // the account has quota). Absent or blank, it resolves to DEFAULT_MODEL_ID.
+  const modelId = process.env.GROQ_MODEL?.trim() || DEFAULT_MODEL_ID;
 
   if (!apiKey || apiKey.trim().length === 0) {
     throw new MissingGroqConfigError("GROQ_API_KEY is not configured on the server.");
-  }
-  if (!modelId || modelId.trim().length === 0) {
-    throw new MissingGroqConfigError("GROQ_MODEL is not configured on the server.");
   }
 
   return new OpenAIModel({
