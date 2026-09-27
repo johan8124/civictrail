@@ -90,6 +90,7 @@ Server-side only:
 - GROQ_API_KEY
 - GROQ_MODEL
 - Groq-compatible base URL: https://api.groq.com/openai/v1
+- CIVICTRAIL_MODEL_MAX_TOKENS (optional output-token budget per agent turn, default 1200)
 
 Never expose secrets.
 

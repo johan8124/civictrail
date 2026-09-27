@@ -27,6 +27,8 @@ const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
 /** Bounded retry budget: one short retry for transient throttling, not batch-style waits. */
 const DEFAULT_MAX_RETRIES = 1;
+/** Output-token budget per agent turn to stay within provider TPM limits. */
+const DEFAULT_MAX_TOKENS = 1200;
 /** Per-request timeout for a single model call (one agent turn). */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 /** Hard wall-clock deadline for the complete agent run. */
@@ -123,6 +125,7 @@ function createTriageModel(): OpenAIModel {
     api: "chat", // Chat Completions mode for reliable tool calling on Groq.
     modelId,
     apiKey,
+    maxTokens: envBudget("CIVICTRAIL_MODEL_MAX_TOKENS", DEFAULT_MAX_TOKENS),
     clientConfig: {
       // Env override exists for hermetic latency tests; production leaves it
       // unset and uses the Groq endpoint.

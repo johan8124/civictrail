@@ -250,8 +250,9 @@ npm install
 # 5. Provide the required key in .env.local:
 GROQ_API_KEY=your-key-here
 
-# 6. Optionally specify a model in .env.local:
+# 6. Optionally specify a model and runtime budgets in .env.local:
 GROQ_MODEL=your-model-name
+CIVICTRAIL_MODEL_MAX_TOKENS=1200 # optional output-token budget (default: 1200)
 
 # 7. Run the development server
 npm run dev
