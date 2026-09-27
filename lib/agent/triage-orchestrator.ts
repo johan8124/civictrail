@@ -29,7 +29,7 @@ import { buildLedger } from "../evidence/ledger";
 import { buildActionPacket } from "../action-packet/packet";
 import { getRouteForWorkflow } from "../routes";
 import { runTriageAgent } from "./triage-agent";
-import type { AgentRunCollector } from "./agent-tools";
+import type { AgentCompletionStatus, AgentRunCollector } from "./agent-tools";
 import {
   applyClassificationGuard,
   keywordFallbackClassify,
@@ -101,6 +101,7 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
   let collector: AgentRunCollector | null = null;
   let agentSummary = "";
   let agentError: string | undefined;
+  let agentCompletion: AgentCompletionStatus | null = null;
 
   try {
     const run = await runTriageAgent({
@@ -110,15 +111,26 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
     });
     collector = run.collector;
     agentSummary = run.agentSummary;
+    agentCompletion = run.completion;
     if (run.agentCompletedNormally === false) {
       // Honest fallback UX: the wall-clock deadline fired and the agent run
       // did not complete, so the UI must not claim that it did.
       agentError =
         "Agent analysis was stopped at the interactive time limit — deterministic checks still applied.";
+    } else if (!run.completion.sequenceComplete) {
+      // The run ended normally, but the deterministic completion gate shows
+      // the required four-tool sequence did not complete. The run is
+      // disclosed as incomplete rather than presented as a finished analysis.
+      agentError = `Agent run did not complete the required tool sequence (${run.completion.reason}) — deterministic checks still applied.`;
     }
   } catch {
     agentError = "Agent run failed or unavailable — deterministic checks still applied.";
   }
+
+  // AGENT COMPLETION GATE (deterministic): "agent used" means the required
+  // four-tool sequence completed successfully, in order — never merely that a
+  // collector object exists. Anything less is deterministic-fallback territory.
+  const agentSequenceComplete = agentCompletion?.sequenceComplete === true;
 
   const { classification, workflow } = resolveWorkflow(request, collector);
   const resolved = ImplementedWorkflowIdSchema.safeParse(workflow);
@@ -137,7 +149,7 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
     return buildUnsupportedWorkflowResult({
       classification,
       guard: guarded.guard,
-      agentUsed: collector !== null,
+      agentUsed: agentSequenceComplete,
       agentSummary,
       agentError,
     });
@@ -171,8 +183,11 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
     }),
   };
 
+  // Model prose becomes the packet summary only when the agent run actually
+  // completed the required tool sequence: partial agent output is never used
+  // as authoritative content of the Action Packet.
   const issueSummary =
-    agentSummary.trim().length > 0
+    agentSequenceComplete && agentSummary.trim().length > 0
       ? agentSummary.trim()
       : `CivicTrail triaged the reported problem under the ${route.label} workflow.`;
 
@@ -186,7 +201,7 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
 
   return {
     ok: true,
-    agentUsed: collector !== null,
+    agentUsed: agentSequenceComplete,
     agentSummary,
     agentError,
     workflowResolved: workflowResolved,

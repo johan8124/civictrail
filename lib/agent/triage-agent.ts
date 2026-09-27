@@ -25,7 +25,13 @@
  */
 import { Agent } from "@strands-agents/sdk";
 import { OpenAIModel } from "@strands-agents/sdk/models/openai";
-import { createCivicTrailTools, createCollector, type AgentRunCollector } from "./agent-tools";
+import {
+  createCivicTrailTools,
+  createCollector,
+  evaluateAgentCompletion,
+  type AgentCompletionStatus,
+  type AgentRunCollector,
+} from "./agent-tools";
 import type { EvidenceRecord, ImplementedWorkflowId } from "../types/civictrail";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
@@ -113,6 +119,12 @@ export interface TriageAgentRun {
   agentSummary: string;
   /** True when the agent completed its run normally (no cancellation/timeout). */
   agentCompletedNormally?: boolean;
+  /**
+   * Deterministic completion gate: the run is complete only when all four
+   * required tools completed successfully, in the required order. Computed
+   * from the tools' own recorded results — never from model prose.
+   */
+  completion: AgentCompletionStatus;
 }
 
 export class MissingGroqConfigError extends Error {
@@ -198,5 +210,6 @@ export async function runTriageAgent(input: TriageAgentInput): Promise<TriageAge
     collector,
     agentSummary: result.toString().slice(0, 800),
     agentCompletedNormally,
+    completion: evaluateAgentCompletion(collector),
   };
 }

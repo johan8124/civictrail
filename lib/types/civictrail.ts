@@ -324,7 +324,13 @@ export interface AgentClassification {
 
 export interface TriageResponse {
   ok: true;
-  /** True when the Strands agent completed a tool-using run. */
+  /**
+   * True only when the Strands agent completed the required four-tool sequence
+   * (classify_issue, lookup_official_route, inspect_evidence,
+   * validate_action_packet) in that order, each recording its result. It is
+   * never true merely because an agent run was attempted, and it is never
+   * derived from model prose.
+   */
   agentUsed: boolean;
   agentSummary: string;
   agentError?: string;

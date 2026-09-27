@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx tests/deterministic.test.ts && tsx tests/phase2.test.ts && tsx tests/phase3.test.ts && tsx tests/agent-latency.test.ts"
+    "test": "tsx tests/deterministic.test.ts && tsx tests/phase2.test.ts && tsx tests/phase3.test.ts && tsx tests/agent-completion.test.ts && tsx tests/agent-latency.test.ts"
   },
   "dependencies": {
     "@strands-agents/sdk": "^1.18.0",
