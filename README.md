@@ -7,6 +7,7 @@ CivicTrail combines an AI triage agent with verified official routes and a deter
 > **AI investigates. Deterministic rules verify. Humans decide.**
 
 [🚀 Live Demo](https://civictrail.vercel.app)
+[🎥 Demo Video](https://youtu.be/dqyAe9PzKac)
 
 ## Why CivicTrail Is Different
 
