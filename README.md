@@ -1,57 +1,22 @@
 # CivicTrail
 
-**CivicTrail is an evidence-first AI workflow assistant that helps people reach the correct official legal/civic process and checks whether their action packet is ready.**
+### Evidence-first AI that turns messy civic and consumer problems into verified, action-ready workflows.
 
----
+CivicTrail combines an AI triage agent with verified official routes and a deterministic evidence engine to help people understand **where to act, what evidence is missing, and whether their action packet is ready.**
 
-## The Problem
+> **AI investigates. Deterministic rules verify. Humans decide.**
 
-People often know something went wrong — a faulty product, a fraudulent transaction — but still do not know:
+[🚀 Live Demo](https://civictrail.vercel.app)
 
-- which official process applies to their situation;
-- what information and evidence they need;
-- what is still missing from their case;
-- how to turn scattered facts into an organized next action.
+## Why CivicTrail Is Different
 
-A generic chatbot can produce a confident-sounding paragraph. It cannot reliably bridge the gap between a messy real-world problem and an action-ready case — and it cannot show you *why* it reached its conclusion.
+Most AI assistants stop at an answer.
 
-## The Core Workflow
+CivicTrail turns a real-world problem into an auditable workflow:
 
-```text
-Problem
-   ↓
-Official Route
-   ↓
-Evidence Check
-   ↓
-Readiness
-   ↓
-Action Packet
-   ↓
-Human Confirmation
-```
+**Problem → Classification → Verified Official Route → Evidence Check → Deterministic Readiness → Action Packet → Human Confirmation**
 
-## Why CivicTrail
-
-Generic AI assistants answer questions. CivicTrail is built around a different promise: **evidence-first action readiness**.
-
-| Generic chatbot | CivicTrail |
-|---|---|
-| Produces prose that *sounds* authoritative | Produces a readiness result backed by deterministic checks |
-| You cannot inspect why it said something | Every check is recorded in an inspectable Evidence Ledger |
-| LLM output is treated as the answer | LLM prose is never treated as authoritative evidence |
-| No clear next step | A structured Action Packet with explicit next actions |
-| Decision made by the model | READY/BLOCKED authority owned by deterministic code, not the LLM |
-
-CivicTrail is designed so it can say:
-
-> **BLOCKED** — a specific piece of information/evidence is missing.
-
-And after that item is supplied:
-
-> **READY** — the defined checklist is complete.
-
-The user can always inspect *why* the result occurred.
+The LLM does **not** control the final READY / BLOCKED / HUMAN_REVIEW decision.
 
 ## What It Does
 
@@ -358,8 +323,7 @@ CivicTrail is an **MVP / prototype** built for evaluation and demonstration. It 
 
 ## Demo
 
-- [Live Demo](https://civictrail.vercel.app)
-- Demo video will be added here before submission.
+Demo video will be added here before submission.
 
 ## Disclaimer
 
