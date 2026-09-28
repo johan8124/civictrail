@@ -123,7 +123,12 @@ export async function runTriage(request: TriageRequest): Promise<TriageResponse>
       // disclosed as incomplete rather than presented as a finished analysis.
       agentError = `Agent run did not complete the required tool sequence (${run.completion.reason}) — deterministic checks still applied.`;
     }
-  } catch {
+  } catch (error) {
+    // Server-side diagnostics only: the full error object (name, message,
+    // stack) goes to the server console. The browser always receives the
+    // generic message — error details, headers, and stack traces are never
+    // exposed to the client.
+    console.error("[CivicTrail] Agent run failed:", error);
     agentError = "Agent run failed or unavailable — deterministic checks still applied.";
   }
 

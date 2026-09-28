@@ -10,6 +10,7 @@
     "test": "tsx tests/deterministic.test.ts && tsx tests/phase2.test.ts && tsx tests/phase3.test.ts && tsx tests/agent-completion.test.ts && tsx tests/agent-latency.test.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.24.0",
     "@strands-agents/sdk": "^1.18.0",
     "next": "16.3.5",
     "openai": "^6.49.0",

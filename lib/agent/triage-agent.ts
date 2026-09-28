@@ -1,29 +1,41 @@
 /**
  * CivicTrail triage agent runner (server-side only).
  *
- * Uses the Strands TypeScript SDK with an OpenAI-compatible model provider
- * pointed at the Groq endpoint. The agent MUST use its tools — the run
+ * Uses the Strands TypeScript SDK with a native provider model.
+ *
+ * Provider selection: Gemini via the native GoogleModel provider is preferred
+ * whenever GEMINI_API_KEY is configured — it uses the Gemini GenerateContent
+ * API directly, avoiding the OpenAI-compatible endpoint's streamed tool-call
+ * handling, which can report tool_calls with finish_reason "stop" and prevent
+ * tool dispatch. Groq (OpenAI-compatible Chat Completions via OpenAIModel)
+ * remains as a fallback only when GEMINI_API_KEY is absent, so local/older
+ * configuration still works. The agent MUST use its tools — the run
  * orchestration below reads classification and route data from recorded
  * tool results, never from free-form LLM prose.
  *
- * LATENCY BUDGET: the OpenAI-compatible client under the Strands SDK retries
- * 429 throttling responses with exponential backoff. Left at its defaults
- * (2 retries, up to 8s backoff between attempts, 10-minute request timeout)
- * a throttled run can hold the citizen for minutes before the deterministic
- * fallback engages. The budgets below keep one short retry opportunity for
- * transient throttling, bound every individual model request, and put a hard
- * wall-clock deadline on the whole agent run — after which the orchestrator
- * falls back to the deterministic pipeline.
+ * LATENCY BUDGET: the Strands SDK providers retry some 429 throttling
+ * responses with exponential backoff, and that backoff sleeps happen inside
+ * the model request where the agent wall-clock deadline cannot reach. Left at
+ * their defaults a throttled run can hold the citizen for minutes before the
+ * deterministic fallback engages. The budgets below keep one short retry
+ * opportunity for transient throttling, cap every individual model request,
+ * and put a hard wall-clock deadline on the whole agent run — after which the
+ * orchestrator falls back to the deterministic pipeline. Both providers map to
+ * the same budget (Groq via maxRetries/timeout, Gemini via httpOptions
+ * retryOptions/timeout).
  *
- * MODEL ISOLATION: GROQ_MODEL is optional — when unset or blank the runner
- * uses DEFAULT_MODEL_ID (openai/gpt-oss-20b), the production-safe Groq model
- * that supports tool use / function calling while staying inside free-tier
- * token budgets. GROQ_API_KEY remains required server-side.
+ * MODEL ISOLATION: GEMINI_MODEL is optional — when unset or blank the runner
+ * uses DEFAULT_GEMINI_MODEL_ID ("gemini-3.8-flash"). GROQ_MODEL is an
+ * optional override for the Groq fallback path only (DEFAULT_MODEL_ID,
+ * openai/gpt-oss-20b). Whichever provider is selected, its API key remains
+ * required server-side.
  *
- * SECRET SAFETY: GROQ_API_KEY is read server-side and passed only to the
- * model client. It is never logged, never returned, never sent to the client.
+ * SECRET SAFETY: GEMINI_API_KEY / GROQ_API_KEY are read server-side and
+ * passed only to the model client. They are never logged, never returned,
+ * never sent to the client.
  */
 import { Agent } from "@strands-agents/sdk";
+import { GoogleModel } from "@strands-agents/sdk/models/google";
 import { OpenAIModel } from "@strands-agents/sdk/models/openai";
 import {
   createCivicTrailTools,
@@ -35,6 +47,9 @@ import {
 import type { EvidenceRecord, ImplementedWorkflowId } from "../types/civictrail";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+
+/** Production-default Gemini model for the preferred provider path. */
+const DEFAULT_GEMINI_MODEL_ID = "gemini-3.8-flash";
 
 /**
  * Production-default Groq model. openai/gpt-oss-20b supports tool use /
@@ -64,9 +79,11 @@ const DEFAULT_DEADLINE_MS = 30_000;
 const RETRY_AFTER_CAP_SECONDS = 2;
 
 /**
- * Fetch wrapper for the model client: passes every response through untouched
- * except 429s whose Retry-After exceeds the interactive cap, which are
- * reissued with the capped value so a retry decision stays bounded.
+ * Fetch wrapper for the OpenAI-compatible (Groq) client: passes every response
+ * through untouched except 429s whose Retry-After exceeds the interactive cap,
+ * which are reissued with the capped value so a retry decision stays bounded.
+ * The native Google client needs no equivalent hook — its backoff ignores
+ * Retry-After and is bounded directly via httpOptions.retryOptions.maxDelay.
  */
 async function interactiveFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const response = await fetch(input, init);
@@ -134,7 +151,49 @@ export class MissingGroqConfigError extends Error {
   }
 }
 
-function createTriageModel(): OpenAIModel {
+function createTriageModel(): OpenAIModel | GoogleModel {
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+
+  // Preferred provider: native Gemini via GoogleModel (GenerateContent API).
+  // Native function calling avoids the OpenAI-compatible Gemini endpoint's
+  // streamed tool-call handling, where tool_calls can arrive with
+  // finish_reason "stop" and never dispatch. The interactive budgets carry
+  // over through the native client's httpOptions — @google/genai arms the
+  // timeout per attempt and bounds its own backoff with maxDelay, which matters
+  // because that backoff sleeps inside the model request, beyond the reach of
+  // the agent wall-clock deadline. retryStrategy stays null on the Agent and no
+  // extra retry layer is added. The API key travels server-side only and is
+  // never logged.
+  if (geminiApiKey && geminiApiKey.trim().length > 0) {
+    return new GoogleModel({
+      modelId: process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL_ID,
+      apiKey: geminiApiKey,
+      params: {
+        maxOutputTokens: envBudget("CIVICTRAIL_MODEL_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+      },
+      clientConfig: {
+        httpOptions: {
+          // Per-attempt request timeout, mirroring the Groq path's client
+          // timeout so a stalled connection cannot hold the run open.
+          timeout: envBudget("CIVICTRAIL_MODEL_TIMEOUT_MS", DEFAULT_REQUEST_TIMEOUT_MS),
+          retryOptions: {
+            // "attempts" counts the initial call, so DEFAULT_MAX_RETRIES + 1
+            // is the same one-short-retry budget the Groq path runs with; the
+            // client's own defaults (5 attempts, up to 60s waits) are
+            // batch-style and unacceptable for a citizen-facing workflow.
+            attempts: envBudget("CIVICTRAIL_MODEL_MAX_RETRIES", DEFAULT_MAX_RETRIES) + 1,
+            initialDelay: 1,
+            // Seconds — the same interactive ceiling as the Retry-After cap.
+            maxDelay: RETRY_AFTER_CAP_SECONDS,
+          },
+        },
+      },
+    });
+  }
+
+  // Fallback provider: Groq over its OpenAI-compatible Chat Completions
+  // endpoint. Reached only when GEMINI_API_KEY is absent, so local/older
+  // configuration keeps working.
   const apiKey = process.env.GROQ_API_KEY;
   // GROQ_MODEL is an optional explicit override (e.g. openai/gpt-oss-120b when
   // the account has quota). Absent or blank, it resolves to DEFAULT_MODEL_ID.
