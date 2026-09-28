@@ -93,6 +93,8 @@ For Indian consumers with unresolved product/service disputes, CivicTrail takes 
 
 CivicTrail separates *investigation* from *verification*. The AI agent investigates; deterministic code verifies; the Evidence Ledger shows the proof; a human decides when uncertainty remains.
 
+The agent is built on the **Strands Agents SDK**. Its primary model provider is the native **Strands `GoogleModel`** using Google Gemini, integrated through **`@google/genai`**. Groq is kept only as a fallback for legacy-compatible configurations and is used only when `GEMINI_API_KEY` is not configured.
+
 ```text
 User
   |
@@ -103,17 +105,23 @@ Next.js Web App
 POST /api/triage  (Zod input validation, secrets server-side)
   |
   v
-Strands Agent
+Strands Agent   (GoogleModel -> Google Gemini)
   |
-  +--> classify_issue
-  +--> lookup_official_route
-  +--> inspect_evidence
-  +--> validate_action_packet
+  |  Required tool sequence — exact order:
+  v
+classify_issue
   |
   v
-Deterministic Rule Engine   (never calls an LLM)
+lookup_official_route
   |
-  +--> pass / fail / review
+  v
+inspect_evidence
+  |
+  v
+validate_action_packet
+  |
+  v
+Deterministic Readiness Engine   (never calls an LLM; authoritative)
   |
   v
 Evidence Ledger
@@ -122,21 +130,28 @@ Evidence Ledger
 READY / BLOCKED / HUMAN_REVIEW
   |
   v
-Action Packet
+Action Packet   (requiresHumanConfirmation: true)
   |
   v
-Human Confirmation
+Human Confirmation   — nothing is filed or submitted automatically
 ```
 
 **Responsibility boundaries:**
 
 | Component | Responsibility |
 |---|---|
-| Strands Agent | Interprets descriptions, classifies likely workflows, calls typed tools, reasons from tool observations, explains verified results. Does **not** own final readiness. |
+| Strands Agent | Interprets the case, classifies likely workflows, calls the typed tools in the required order, reasons from tool observations, explains verified results. Does **not** own readiness and cannot override it. |
 | Deterministic Rule Engine | Validates explicit structured requirements and produces pass/fail/review. Never calls an LLM. |
 | Official Source Registry | Holds verified official sources and verified facts used for routing and authoritative checks. |
 | Evidence Ledger | Links claims to evidence and rules, preserves source references, keeps passing and failing evidence. |
 | Action Packet | A structured draft for human review. Never automatically submitted. |
+
+**Architecture guarantees:**
+
+- **The agent interprets; typed tools act.** The agent reads the case description and calls four typed tools — `classify_issue` → `lookup_official_route` → `inspect_evidence` → `validate_action_packet` — in that exact order. Workflow and route data in the response come from recorded tool results, never from free-form model prose.
+- **The deterministic engine remains authoritative for readiness.** `validate_action_packet` returns the READY / BLOCKED / HUMAN_REVIEW verdict, computed by deterministic rules that never call an LLM.
+- **The agent cannot override readiness.** The readiness value used in the response is the one recorded by the tool; model prose cannot change, reinterpret, or supersede it.
+- **Human confirmation is required before any action.** Every Action Packet carries `requiresHumanConfirmation: true`. CivicTrail does not file, submit, or send anything automatically.
 
 ## Evidence-First Design
 
@@ -229,8 +244,11 @@ No third-party website is used as an authoritative source. Where an official sou
 | [TypeScript](https://www.typescriptlang.org) | Type safety across the workflow |
 | [Tailwind CSS](https://tailwindcss.com) 4 | Styling |
 | [Strands Agents SDK](https://github.com/strands-agents) 1.18.0 | Agent orchestration and typed tool calling |
-| [OpenAI SDK](https://github.com/openai/openai-node) | Model provider client (Groq-compatible endpoint) |
+| Google Gemini via Strands `GoogleModel` | Primary model provider (native Gemini GenerateContent API) |
+| [@google/genai](https://github.com/googleapis/js-genai) 2.24.0 | Gemini integration used by the Strands GoogleModel provider |
 | [Zod](https://zod.dev) | Input validation at the API boundary |
+| [Vercel](https://vercel.com) | Hosting for the live demo |
+| [OpenAI SDK](https://github.com/openai/openai-node) + Groq | Legacy fallback provider path — used only when `GEMINI_API_KEY` is absent |
 
 ## Getting Started
 
@@ -244,32 +262,67 @@ cd civictrail
 # 3. Install dependencies
 npm install
 
-# 4. Create the environment file
-#    (create a file named .env.local in the project root)
+# 4. Create a file named .env.local in the project root
+```
 
-# 5. Provide the required key in .env.local:
-GROQ_API_KEY=your-key-here
+Configure `.env.local` for the Gemini provider:
 
-# 6. Optionally specify a model and runtime budgets in .env.local:
-GROQ_MODEL=your-model-name
-CIVICTRAIL_MODEL_MAX_TOKENS=1200 # optional output-token budget (default: 1200)
+```bash
+# Required — Gemini API key (primary provider)
+GEMINI_API_KEY=your-key-here
 
-# 7. Run the development server
+# Recommended — Gemini model used by the agent
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# Optional runtime controls (interactive latency budgets)
+CIVICTRAIL_AGENT_DEADLINE_MS=90000   # wall-clock deadline for one agent run (default: 30000)
+CIVICTRAIL_MODEL_TIMEOUT_MS=20000    # timeout for a single model request (default: 30000)
+CIVICTRAIL_MODEL_MAX_TOKENS=1200     # output-token budget per agent turn (default: 1200)
+CIVICTRAIL_MODEL_MAX_RETRIES=1       # one short retry for transient throttling (default: 1)
+```
+
+Then start the development server:
+
+```bash
 npm run dev
 ```
 
-**Note:** `GROQ_API_KEY` is used server-side only. It is never included in client code, API responses, or the repository. Do not commit `.env.local`.
+**Secrets and environment files:**
+
+- `.env.local` is local only and gitignored — never commit it, and never commit API keys.
+- `GEMINI_API_KEY` is used server-side only. It is never included in client code, API responses, logs, or the repository.
+- If `GEMINI_MODEL` is unset, the runner defaults to `gemini-3.8-flash`.
+- Fallback (legacy-compatible): when `GEMINI_API_KEY` is absent, the runner uses Groq via `GROQ_API_KEY` (optional `GROQ_MODEL` override).
 
 ## Testing
 
 ```bash
-npm test            # deterministic, phase 2, phase 3, and hermetic agent tests
+npm test            # full suite: deterministic, phase 2, phase 3,
+                    # agent completion, agent latency
 npx tsc --noEmit    # type check
 npm run lint        # ESLint
-npm run build       # production build
+npm run build       # production build (available, but not part of the
+                    # latest verification snapshot below)
 ```
 
-Validation snapshot at the time of this README: **63/63 tests passing**, with TypeScript, ESLint, and the production build all passing. This is a point-in-time validation result for the current MVP, not a permanent guarantee.
+Verified suite — **74 tests total**:
+
+| Suite | Tests |
+|---|---|
+| Deterministic | 13 |
+| Phase 2 | 36 |
+| Phase 3 | 11 |
+| Agent completion | 9 |
+| Agent latency | 5 |
+
+Latest verification run passed:
+
+- **74/74 tests**
+- `npx tsc --noEmit`
+- `npm run lint`
+- live local agent smoke/UI verification — a real `POST /api/triage` agent run against the local dev server completed all four tools in order with `agentUsed=true` and a deterministic readiness verdict of `READY`
+
+These are point-in-time validation results for the current MVP, not permanent guarantees.
 
 ## Project Structure
 
@@ -295,6 +348,10 @@ Phases.md         Build phases
 - [Design.md](Design.md) — design system
 - [Phases.md](Phases.md) — build phases
 
+## AI-Assisted Development
+
+ChatGPT, Cline, and Antigravity were used during development for design discussion, implementation drafts, and debugging. The resulting implementation was reviewed, tested, and integrated by the project author; every change in this repository was validated through the test suite and verification runs described above.
+
 ## Project Status
 
 CivicTrail is an **MVP / prototype** built for evaluation and demonstration. It is not a production legal service, not affiliated with any government body, and not a substitute for official portals or professional advice. Scope, workflows, and safety boundaries are documented in [PRD.md](PRD.md) and [Rules.md](Rules.md).
@@ -302,7 +359,7 @@ CivicTrail is an **MVP / prototype** built for evaluation and demonstration. It 
 ## Demo
 
 - [Live Demo](https://civictrail.vercel.app)
-- [Demo Video](INSERT_DEMO_VIDEO_URL)
+- Demo video will be added here before submission.
 
 ## Disclaimer
 
