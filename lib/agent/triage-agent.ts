@@ -25,7 +25,7 @@
  * retryOptions/timeout).
  *
  * MODEL ISOLATION: GEMINI_MODEL is optional — when unset or blank the runner
- * uses DEFAULT_GEMINI_MODEL_ID ("gemini-3.8-flash"). GROQ_MODEL is an
+ * uses DEFAULT_GEMINI_MODEL_ID ("gemini-3.5-flash-lite"). GROQ_MODEL is an
  * optional override for the Groq fallback path only (DEFAULT_MODEL_ID,
  * openai/gpt-oss-20b). Whichever provider is selected, its API key remains
  * required server-side.
@@ -48,8 +48,12 @@ import type { EvidenceRecord, ImplementedWorkflowId } from "../types/civictrail"
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
-/** Production-default Gemini model for the preferred provider path. */
-const DEFAULT_GEMINI_MODEL_ID = "gemini-3.8-flash";
+/**
+ * Production-default Gemini model for the preferred provider path. Matches
+ * the documented GEMINI_MODEL example (gemini-3.5-flash-lite) so the repo has
+ * one reproducible default; GEMINI_MODEL may still override it at runtime.
+ */
+const DEFAULT_GEMINI_MODEL_ID = "gemini-3.5-flash-lite";
 
 /**
  * Production-default Groq model. openai/gpt-oss-20b supports tool use /

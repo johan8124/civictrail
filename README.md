@@ -122,6 +122,8 @@ Human Confirmation   — nothing is filed or submitted automatically
 
 The LLM does not own READY/BLOCKED decisions — by architecture, not by prompt etiquette.
 
+The agent does not extract readiness evidence from free-form prose. Structured evidence is supplied through the intake schema and passed to deterministic validation.
+
 - The agent's suggestion is only a *suggestion*. A deterministic guard validates every classification before it can drive product logic, and strong supported signals are required before a workflow is assigned.
 - Agent confidence alone is never sufficient. Ambiguous or unsupported cases go to HUMAN_REVIEW.
 - An LLM statement is never treated as evidence. CivicTrail distinguishes between user-provided evidence, official-source information, deterministic validation, and LLM explanation — and only the first three can support a readiness result.
@@ -256,7 +258,7 @@ npm run dev
 
 - `.env.local` is local only and gitignored — never commit it, and never commit API keys.
 - `GEMINI_API_KEY` is used server-side only. It is never included in client code, API responses, logs, or the repository.
-- If `GEMINI_MODEL` is unset, the runner defaults to `gemini-3.8-flash`.
+- If `GEMINI_MODEL` is unset, the runner defaults to `gemini-3.5-flash-lite`.
 - Fallback (legacy-compatible): when `GEMINI_API_KEY` is absent, the runner uses Groq via `GROQ_API_KEY` (optional `GROQ_MODEL` override).
 
 ## Testing
@@ -266,8 +268,7 @@ npm test            # full suite: deterministic, phase 2, phase 3,
                     # agent completion, agent latency
 npx tsc --noEmit    # type check
 npm run lint        # ESLint
-npm run build       # production build (available, but not part of the
-                    # latest verification snapshot below)
+npm run build       # production build
 ```
 
 Verified suite — **74 tests total**:
@@ -285,7 +286,11 @@ Latest verification run passed:
 - **74/74 tests**
 - `npx tsc --noEmit`
 - `npm run lint`
-- live local agent smoke/UI verification — a real `POST /api/triage` agent run against the local dev server completed all four tools in order with `agentUsed=true` and a deterministic readiness verdict of `READY`
+- `npm run build` (production build)
+- fresh clone: `npm ci` + `npm test` — 74/74 passing with no credentials and no API key present
+- fresh clone: `npm run build` — production build passing with no credentials and no API key present
+
+A prior local run (before this verification snapshot) also completed a live `POST /api/triage` agent smoke against the dev server: all four tools ran in order with `agentUsed=true` and a deterministic readiness verdict of `READY`. That live check was not re-run for this snapshot.
 
 These are point-in-time validation results for the current MVP, not permanent guarantees.
 
@@ -317,13 +322,22 @@ Phases.md         Build phases
 
 ChatGPT, Cline, and Antigravity were used during development for design discussion, implementation drafts, and debugging. The resulting implementation was reviewed, tested, and integrated by the project author; every change in this repository was validated through the test suite and verification runs described above.
 
+## Limitations & Verification Status
+
+- The current MVP browser UI does not upload or inspect binary files.
+- The intake UI records file-related metadata (fields are explicitly labeled as metadata, e.g. "Identity document (metadata)" and "Supporting evidence (metadata)").
+- File-size rules are evaluated only when structured upload metadata is actually supplied.
+- The exact prohibited-character list used by the official cybercrime portal is not reproduced, because the verified source establishes that such characters are restricted but does not provide a complete verified list in Sources.md.
+- CivicTrail uses a conservative product-level check for this and surfaces the result for human verification.
+- Classification uses a deterministic guard after the agent suggestion; ambiguous/unsupported cases go to HUMAN_REVIEW.
+- The agent does not extract transaction IDs, amounts, dates, or other readiness fields from free-form prose. Structured evidence is supplied through the intake schema and validated deterministically.
+- External model latency and availability depend on Gemini service/quota conditions; CivicTrail has bounded request/deadline controls and a deterministic fallback.
+
+Verification results are recorded under [Testing](#testing).
+
 ## Project Status
 
 CivicTrail is an **MVP / prototype** built for evaluation and demonstration. It is not a production legal service, not affiliated with any government body, and not a substitute for official portals or professional advice. Scope, workflows, and safety boundaries are documented in [PRD.md](PRD.md) and [Rules.md](Rules.md).
-
-## Demo
-
-Demo video will be added here before submission.
 
 ## Disclaimer
 
@@ -331,4 +345,4 @@ CivicTrail is an informational decision-support and workflow-assistance tool. It
 
 ## License
 
-No license has been added to this repository yet. The absence of a license means default copyright protections apply; the project should not be assumed to be open source until a license file is added.
+MIT. See [LICENSE](LICENSE).

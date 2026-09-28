@@ -49,3 +49,7 @@ tmp-*.mjs
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# internal agent scaffolding (local-only; never published to the public repo)
+memory.md
+CLAUDE.md
